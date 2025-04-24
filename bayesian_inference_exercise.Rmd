@@ -1,0 +1,237 @@
+---
+title: "Bayesian estimation of the infection prevalence"
+output: html_notebook
+---
+
+In this question, we are going to estimate the prevalence of infection using data for soil-transmitted helminths collected via a cross-sectional study that was conducted in nine villages across three districts of Meghalaya: Ri Bhoi, Eastern West Khasi Hills, and Jaintia Hills.
+
+Throughout this problem set, we will use "theta" to denote infection prevalence. We will assume that the test ("Kato Katz microscopy") has perfect sensitivity and specificity.
+
+We will first explore estimation of theta in the classical approach; this will then be contrasted with a Bayesian approach.
+
+0. Load in the data and clean it. TODO.
+```{r}
+library(tidyverse)
+filename <- "../../data/sth_data.csv"
+df <- read.csv(filename)
+  
+# remove NAs in age and seropositivity
+df <- df %>% 
+  filter(!is.na(overall_sth_microscopy)) %>% 
+  filter(!is.na(age)) %>% 
+  filter(age < 60) %>% 
+  filter(age > 0)
+```
+
+
+## Classical inference
+
+1. Calculate the overall proportion who tested positive for STH (via the `overall_sth_microscopy` variable); this value also corresponds to the maximum likelihood estimate of the prevalence. 
+```{r}
+mean(df$overall_sth_microscopy)
+```
+
+2. The likelihood is a binomial distribution. The probability mass function for this distribution can be evaluated in R using the `dbinom` function. Create a vector of possible infection prevalence values between 0 and 1. Using the `dbinom` function, calculate then plot the likelihood function over this range.
+
+(Hint: the theta values should be being passed to the function under the `prob` argument.)
+
+
+```{r}
+thetas <- seq(0, 1, 0.001)
+n_positive <- sum(df$overall_sth_microscopy)
+n_tested <- nrow(df)
+likelihoods <- dbinom(n_positive, n_tested, thetas)
+
+plot(thetas, likelihoods, type="l", xlab="theta", ylab="likelihood")
+```
+3. We are now going to calculate 95% binomial confidence intervals for the prevalence. The formulae for the lower and upper bounds are given by:
+
+- lower = p - 1.96 * sqrt(p * (1 - p) / n)
+- upper = p + 1.96 * sqrt(p * (1 - p) / n)
+
+where p is the proportion positive and n is the sample size. Using this formulae, calculate the 95% confidence interval. 
+
+```{r}
+p <- mean(df$overall_sth_microscopy)
+n <- nrow(df)
+lower <- p - 1.96 * sqrt(p * (1 - p) / n)
+upper <- p + 1.96 * sqrt(p * (1 - p) / n)
+
+c(lower, upper)
+```
+
+4. Now we are going to consider data for village A only. Calculate the maximum likelihood estimate of infection prevalence for this village and the corresponding 95% confidence interval. Do you notice anything strange about the confidence interval? 
+```{r}
+df_village <- df %>% 
+  filter(village=="A")
+
+p <- mean(df_village$overall_sth_microscopy)
+n <- nrow(df_village)
+lower <- p - 1.96 * sqrt(p * (1 - p) / n)
+upper <- p + 1.96 * sqrt(p * (1 - p) / n)
+
+c(lower, upper)
+```
+
+The confidence interval goes <0, which is not plausible for a prevalence, which must be between 0 and 1.
+
+5. Consider now data for village E only and repeat the exercise. Is this confidence interval reasonable? 
+```{r}
+df_village <- df %>% 
+  filter(village=="E")
+
+p <- mean(df_village$overall_sth_microscopy)
+n <- nrow(df_village)
+lower <- p - 1.96 * sqrt(p * (1 - p) / n)
+upper <- p + 1.96 * sqrt(p * (1 - p) / n)
+
+c(lower, upper)
+```
+
+This uncertainty interval is of width zero, implying that we are infinitely confident that the prevalence is zero. Particularly for low sample sizes, this will not be reasonable.
+
+## Bayesian inference
+
+6. We now consider a Bayesian approach to estimation of theta. To do so requires that we set a prior. We will start by assuming that our prior belief over theta can be described by a beta(1, 1) distribution. Plot the probability density function for this for a grid of theta values between 0 and 1. Hint: use the `dbeta` function. What sort of prior belief does this represent?
+
+```{r}
+densities <- dbeta(thetas, 1, 1)
+plot(thetas, densities, type='l', xlab="theta", ylab="density")
+```
+This represents the belief that all values of prevalence between 0 and 1 are equally likely.
+
+7. Under a beta(1, 1) prior, the Bayesian posterior distribution is given by the formula:
+
+theta ~ beta(1 + x, 1 + n - x)
+
+where x is the number testing positive and n is the sample size. Using the `dbeta` function, plot the probability density function for the posterior distribution of theta when pooling data from all villages. 
+
+```{r}
+x <- sum(df$overall_sth_microscopy)
+n <- nrow(df)
+posteriors <- dbeta(thetas, 1 + x, 1 + n - x)
+plot(thetas, posteriors, type='l', xlab="theta", ylab="density")
+```
+8. Plot the Bayesian posterior for theta considering only data for village A. How does it compare to the posterior obtained when pooling data across all villages? 
+
+```{r}
+df_village <- df %>% 
+  filter(village=="A")
+x <- sum(df_village$overall_sth_microscopy)
+n <- nrow(df_village)
+posteriors <- dbeta(thetas, 1 + x, 1 + n - x)
+plot(thetas, posteriors, type='l', xlab="theta", ylab="density")
+```
+
+The posterior distribution is wider here because the sample size is lower because we consider only data for village A.
+
+9. We are now going to calculate the 95% Bayesian central credible intervals. To do so, we will do the following:
+
+- lower = qbeta(0.025, 1 + x, 1 + n - x)
+- upper = qbeta(0.975, 1 + x, 1 + n - x)
+
+These represent the 2.5% and 97.5% quantiles of the posterior distribution.
+
+How does this interval compare with the equivalent 95% confidence interval that you estimated earlier for village A? 
+```{r}
+lower = qbeta(0.025, 1 + x, 1 + n - x)
+upper = qbeta(0.975, 1 + x, 1 + n - x)
+
+c(lower, upper)
+```
+
+This uncertainty interval does not have a lower bound which is negative, which is more plausible than the confidence interval.
+
+10. Repeat the exercise for village E. How does the Bayesian credible interval compare to the classical confidence interval? 
+```{r}
+df_village <- df %>% 
+  filter(village=="E")
+x <- sum(df_village$overall_sth_microscopy)
+n <- nrow(df_village)
+
+lower = qbeta(0.025, 1 + x, 1 + n - x)
+upper = qbeta(0.975, 1 + x, 1 + n - x)
+
+c(lower, upper)
+```
+
+This uncertainty bound has a non-zero width, which indicates that we have uncertainty over the prevalence. This is more plausible than the classical equivalent, which implies we know with certainty the prevalence.
+
+11. We are now going to explore how changing the prior distribution leads to changes in the posterior distribution over theta. To do so, we will use data for village A only, and we will use only this village's data for the remainder of the questions.
+
+We will start by assuming a beta(1, 9) prior. Plot the probability density function for this distribution. What sort of prior belief over theta does this represent? 
+```{r}
+priors <- dbeta(thetas, 1, 9)
+plot(thetas, priors, type='l', xlab="theta", ylab="density")
+```
+
+This represents a fairly strong belief that the prevalence is below 0.4. We could calculate this probability using:
+```{r}
+pbeta(0.4, 1, 9)
+```
+
+
+12. The posterior distribution when using a beta(a, b) prior is given by: beta(a + x, b + n - x). Plot the posterior distribution in the case when a=1 and b=9. How does this compare to the case when a=1 and b=1? 
+```{r}
+df_village <- df %>% 
+  filter(village=="A")
+x <- sum(df_village$overall_sth_microscopy)
+n <- nrow(df_village)
+
+posterior_plotter <- function(a, b, x, n, plot_n=1, ...) {
+  posteriors <- dbeta(thetas, a + x, b + n - x)
+  if(plot_n == 1)
+    plot(thetas, posteriors, type='l', xlab="theta", ylab="density", ...)
+  else
+    lines(thetas, posteriors, ...)
+}
+
+posterior_plotter(1, 9, x, n, 1, col="black")
+posterior_plotter(1, 1, x, n, 2, col="blue")
+```
+
+The posterior for the beta(1,1) prior is shifted rightwards relative to the beta(1, 9) case. This is because for the beta(1, 9) prior, this choice of prior puts more weight towards smaller values of theta.
+
+13. How does the posterior change if a=9 and b=1? Can you explain why the distribution shifts in this way? 
+```{r}
+posterior_plotter(1, 9, x, n, 1, col="black")
+posterior_plotter(1, 1, x, n, 2, col="blue")
+posterior_plotter(9, 1, x, n, 3, col="orange")
+```
+
+The prior for the beta(9, 1) case can be plotted as follows:
+```{r}
+priors <- dbeta(thetas, 9, 1)
+plot(thetas, priors, type='l', xlab="theta", ylab="density")
+```
+
+This places more weight towards a prevalence of 1, and the posterior distribution shifts to reflect this.
+
+14. Reverting to a beta(1, 1) prior, calculate the posterior mean. How does this compare to the maximum likelihood estimate for this village?
+
+Hint: the mean of a beta(a, b) distribution is a / (a + b) 
+
+```{r}
+a <- 1 + x
+b <- 1 + n - x
+
+posterior_mean <- a / (a + b)
+mle <- x / n
+posterior_mean
+mle
+```
+
+The maximum likelihood estimate is below the posterior mean estimate. This is because the mean of the prior for the Bayesian model is 0.5.
+
+15. An alternative Bayesian point estimator of the prevalence is given by the posterior median. Calculate this. How and why is this different to the posterior mean?
+
+Hint: use the qbeta function.
+
+```{r}
+qbeta(0.5, 1 + x, 1 + n - x)
+```
+
+The posterior median is below the posterior mean because the posterior distribution is skewed as a result of the prior.
+
+16. (Advanced) Determine and visualise the posterior distribution for each village.
+
