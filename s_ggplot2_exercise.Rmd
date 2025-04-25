@@ -1,0 +1,252 @@
+---
+title: "ggplot data visualisation"
+output: html_notebook
+---
+
+In this question, we are going to introduce the use of ggplot to visualise data for soil-transmitted helminths collected via a cross-sectional study that was conducted in nine villages across three districts of Meghalaya: Ri Bhoi, Eastern West Khasi Hills, and Jaintia Hills.
+
+Load in the data and clean it to remove NAs in the `overall_sth_microscopy` and `age` variables. Also remove observations for individuals aged 60 or above or where the age is zero.
+```{r}
+library(tidyverse)
+filename <- "../../data/sth_data.csv"
+df <- read.csv(filename)
+  
+# remove NAs in age and seropositivity
+df <- df %>% 
+  filter(!is.na(overall_sth_microscopy)) %>% 
+  filter(!is.na(age)) %>% 
+  filter(age < 60) %>% 
+  filter(age > 0)
+```
+
+Load the tidyverse package (really, tidyverse is a collection of packages).
+```{r}
+library(tidyverse)
+```
+
+0. Use ggplot to produce a histogram which visualises the distribution of ages in the dataset.
+```{r}
+df %>% 
+  ggplot(aes(x=age)) +
+  geom_histogram()
+```
+0a. Create histograms of age by sex, with different colours for the genders.
+```{r}
+df %>% 
+  ggplot(aes(x=age, fill=gender)) +
+  geom_histogram(position = "identity", alpha=0.4)
+```
+
+
+0b. Create histograms of age by sex, with separate panels for males and females.
+```{r}
+df %>% 
+  ggplot(aes(x=age)) +
+  geom_histogram() +
+  facet_wrap(~gender)
+```
+0c. Produce boxplots of the age distribution by sex.
+```{r}
+df %>% 
+  ggplot(aes(x=gender, y=age)) +
+  geom_boxplot()
+```
+
+Od. Produce violin plots of the age distribution by sex.
+```{r}
+df %>% 
+  ggplot(aes(x=gender, y=age)) +
+  geom_violin()
+```
+Od. Produce violin plots of the age distribution by sex.
+
+1. Calculate the proportion positive by village.
+```{r}
+df_villages <- df %>% 
+  group_by(village) %>% 
+  summarise(
+    prop_positive=mean(overall_sth_microscopy)
+  )
+```
+
+
+2. Use ggplot to produce a point plot of the proportion testing positive via microscopy (i.e. the `overall_sth_microscopy` by variable) by village.
+
+Hint: put the village name on the horizontal axis.
+
+```{r}
+df_villages %>% 
+  ggplot(aes(x=village, y=prop_positive)) +
+  geom_point()
+```
+3. Now we are going to tidy up the above plot by relabeling the vertical axis so that it produces %s. To do so, add the following to your above plot command:
+
+` + scale_y_continuous(labels=scales::percent)`
+
+```{r}
+df_villages %>% 
+  ggplot(aes(x=village, y=prop_positive)) +
+  geom_point() +
+  scale_y_continuous(labels=scales::percent)
+```
+4. Change the horizontal axis label to be "Village" and the vertical axis to be "Prevalence, %".
+```{r}
+df_villages %>% 
+  ggplot(aes(x=village, y=prop_positive)) +
+  geom_point() +
+  scale_y_continuous(labels=scales::percent) +
+  xlab("Village") +
+  ylab("Prevalence, %")
+```
+5. We are now going to change the plot theme to remove the grey background to it. To do so, add the following to your plot:
+
+`+ theme_classic()`
+
+```{r}
+df_villages %>% 
+  ggplot(aes(x=village, y=prop_positive)) +
+  geom_point() +
+  scale_y_continuous(labels=scales::percent) +
+  xlab("Village") +
+  ylab("Prevalence, %") +
+  theme_classic()
+```
+6. Flip the order of your horizontal and vertical axes by trying out the `+ coord_flip()` command.
+
+```{r}
+df_villages %>% 
+  ggplot(aes(x=village, y=prop_positive)) +
+  geom_point() +
+  scale_y_continuous(labels=scales::percent) +
+  xlab("Village") +
+  ylab("Prevalence, %") +
+  theme_classic() +
+  coord_flip()
+```
+
+7. We are now going to calculate 95% binomial confidence intervals for the prevalence in each village. The formulae for the lower and upper bounds are given by:
+
+- lower = p - 1.96 * sqrt(p * (1 - p) / n)
+- upper = p + 1.96 * sqrt(p * (1 - p) / n)
+
+where p is the proportion positive in each village and n is the sample size. Calculate these and save these in a data frame along with the village name and proportion positive. If the lower bound is below zero, set the lower bound to be zero.
+
+```{r}
+df_villages <- df %>% 
+  group_by(village) %>% 
+  summarise(
+    p=mean(overall_sth_microscopy),
+    lower=p-1.96 * sqrt(p * (1 - p) / n()),
+    upper=p+1.96 * sqrt(p * (1 - p) / n())
+  ) %>% 
+  mutate(lower=if_else(lower<0, 0, lower))
+```
+
+8. Using the `geom_pointrange` command, draw point ranges which display the lower and upper bounds calculated in the previous question, and the positive proportion in each village.
+
+Hint: `geom_pointrange` takes as arguments: `ymin`, `ymax` and `y`.
+
+```{r}
+df_villages %>% 
+  ggplot(aes(x=village, y=p)) +
+  geom_pointrange(aes(ymin=lower, ymax=upper)) +
+  scale_y_continuous(labels=scales::percent) +
+  xlab("Village") +
+  ylab("Prevalence, %") +
+  theme_classic()
+```
+9. We are now going to stratify the dataset by age, to explore how age impacts prevalence. To do so, run the following code (which assumes your dataset is called `df`).
+
+```{r}
+bins <- c(0, 2, 5, 10, 15, seq(20, 80, by = 10))
+age_bins <- cut(df$age,
+                breaks = bins,  
+                right = FALSE,
+                include.lowest = TRUE)
+midpoints <- (head(bins, -1) + tail(bins, -1)) / 2
+lookup <- tibble(
+  age_bin=levels(age_bins),
+  age_bin_mid=midpoints
+)
+
+df <- df %>% 
+  mutate(age_bin=age_bins) %>% 
+  left_join(lookup, by="age_bin") %>% 
+  mutate(age_bin=as.factor(age_bin)) %>% 
+  mutate(age_bin=fct_reorder(age_bin, age_bin_mid))
+```
+
+10. Calculate village-level prevalence by age_bin; then use ggplot to produce "age bin vs prevalence" point plots across all villages, each in separate facet panels; to do so, use: `+ facet_wrap(~village)`.
+
+(Advanced: add in 95% confidence intervals.)
+
+```{r}
+df_villages <- df %>% 
+  group_by(village, age_bin, age_bin_mid) %>% 
+  summarise(
+    p=mean(overall_sth_microscopy),
+    lower=p-1.96 * sqrt(p * (1 - p) / n()),
+    upper=p+1.96 * sqrt(p * (1 - p) / n())
+  ) %>% 
+  mutate(lower=if_else(lower<0, 0, lower))
+
+df_villages %>% 
+  ggplot(aes(x=age_bin, y=p)) +
+  geom_pointrange(aes(ymin=lower, ymax=upper)) +
+  scale_y_continuous(labels=scales::percent) +
+  xlab("Village") +
+  ylab("Prevalence, %") +
+  theme_classic() +
+  facet_wrap(~village)
+```
+
+11. Reduce the limit on the vertical axis to be only between 0 and 1.
+```{r}
+df_villages %>% 
+  ggplot(aes(x=age_bin, y=p)) +
+  geom_point() +
+  geom_pointrange(aes(ymin=lower, ymax=upper)) +
+  scale_y_continuous(
+    labels=scales::percent,
+    limits = c(0, 1)
+    ) +
+  xlab("Village") +
+  ylab("Prevalence, %") +
+  theme_classic() +
+  facet_wrap(~village)
+```
+
+12. Rotate the horizontal axis labels by 90 degrees to make them more readable.
+```{r}
+df_villages %>% 
+  ggplot(aes(x=age_bin, y=p)) +
+  geom_pointrange(aes(ymin=lower, ymax=upper)) +
+  scale_y_continuous(labels=scales::percent) +
+  xlab("Village") +
+  ylab("Prevalence, %") +
+  theme_classic() +
+  facet_wrap(~village) +
+  theme(
+    axis.text.x = element_text(angle=90)
+  )
+```
+
+13. In a new plot, plot prevalence vs `age_bin_mid` (i.e. rather than `age_bin`). Use the following code oto add in a loess regression line (without a standard error):
+
+`+ geom_smooth(se=FALSE)`
+
+```{r}
+df_villages %>% 
+  ggplot(aes(x=age_bin_mid, y=p)) +
+  geom_pointrange(aes(ymin=lower, ymax=upper)) +
+  scale_y_continuous(labels=scales::percent) +
+  xlab("Village") +
+  ylab("Prevalence, %") +
+  theme_classic() +
+  facet_wrap(~village) +
+  geom_smooth(se=FALSE) +
+  theme(
+    axis.text.x = element_text(angle=90)
+  )
+```
+
