@@ -1,0 +1,17 @@
+---
+title: "Visualising STH data"
+output: html_notebook
+---
+
+```{r}
+library(tidyverse)
+filename <- "../../data/sth_data.csv"
+df <- read.csv(filename)
+  
+# remove NAs in age and seropositivity
+df <- df %>% 
+  filter(!is.na(overall_sth_microscopy)) %>% 
+  filter(!is.na(age)) %>% 
+  filter(age < 60) %>% 
+  filter(age > 0)
+```
